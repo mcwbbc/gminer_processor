@@ -1,0 +1,3 @@
+Processor:
+
+The processor takes a job from it's queue and queries the NCBO annotator to get results. It sends the results back to the databaser queue to be saved into the database.

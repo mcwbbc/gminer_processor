@@ -1,0 +1,6 @@
+log/*.log
+tmp/**/*
+tmp/*
+.DS\_Store
+.DS_Store
+/log/*.pid
