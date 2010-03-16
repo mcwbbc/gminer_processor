@@ -5,20 +5,24 @@ class NCBOService
 
   class << self
 
-    def get_data(text, stopwords, ncbo_ontology_id=nil)
+    def get_data(text, stopwords, email, ncbo_ontology_id)
       retried = false
       parameters = {
+        "email" => email,
         "longestOnly" => "false",
         "wholeWordOnly" => "true",
         "stopWords" => stopwords,
+        "minTermSize" => "2",
+        "withSynonyms" => "false",
         "scored" => "true",
-        "ontologiesToExpand" => "#{ncbo_ontology_id}",
+#        "ontologiesToExpand" => "#{ncbo_ontology_id}",
+        "ontologiesToKeepInResult" => "#{ncbo_ontology_id}",
+        "isVirtualOntologyId" => "true",
         "levelMax" => "10",
         "textToAnnotate"  => "#{text}",
         "format" => "xml"
       }
 
-      parameters.merge!({"ontologiesToKeepInResult" => "#{ncbo_ontology_id}"}) if ncbo_ontology_id
 
       begin
         data = NCBOService.post("/obs/annotator", :body => parameters)
@@ -39,13 +43,16 @@ class NCBOService
       end
     end
 
-    def result_hash(text, stopwords, ncbo_ontology_id)
-      begin
-        result = NCBOService.get_data(text, stopwords, ncbo_ontology_id)
-        sleep(1) if !result['success']
-      end until result['success']
-      annotations = result['success']['data']['annotatorResultBean']['annotations']
-      hash = NCBOService.generate_hash(annotations)
+    def result_hash(text, stopwords, ncbo_ontology_id, email)
+      result = NCBOService.get_data(text, stopwords, email, ncbo_ontology_id)
+      if result && result['success']
+        annotations = result['success']['data']['annotatorResultBean']['annotations']
+        return NCBOService.generate_hash(annotations)
+      elsif result && result['errorStatus']
+        raise NCBOException.new(result['errorStatus']['shortMessage'], result['errorStatus']['longMessage'])
+      else
+        raise NCBOException.new("Unknown NCBO Error", result)
+      end
     end
 
     def generate_hash(annotations)
@@ -67,11 +74,11 @@ class NCBOService
       if context["contextName"] == "MGREP"
         h["MGREP"][concept["localConceptId"].gsub("/","|")] = {:name => concept["preferredName"], :from => context["from"], :to => context["to"]}
       elsif context["contextName"] == "MAPPING"
-        # mapping will be treated/processed the same as an mgrep, but with the from,to set to 0 since we can't reference it in the text anyway
-        h["MAPPING"][concept["localConceptId"].gsub("/","|")] = {:name => concept["preferredName"], :from => "0", :to => "0"}
+        h["MAPPING"][concept["localConceptId"].gsub("/","|")] = {:name => concept["preferredName"], :from => context["from"], :to => context["to"]}
       else
         if h["ISA_CLOSURE"][context['concept']["localConceptId"].gsub("/","|")].is_a?(Array)
           h["ISA_CLOSURE"][context['concept']["localConceptId"].gsub("/","|")] << {:name => concept["preferredName"], :id => concept["localConceptId"].gsub("/","|")}
+          h["ISA_CLOSURE"][context['concept']["localConceptId"].gsub("/","|")].uniq!
         else
           h["ISA_CLOSURE"][context['concept']["localConceptId"].gsub("/","|")] = [{:name => concept["preferredName"], :id => concept["localConceptId"].gsub("/","|")}]
         end

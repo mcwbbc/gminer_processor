@@ -5,15 +5,19 @@ class GminerProcessor
 
   SCHEDULER_QUEUE_NAME = 'gminer-scheduler'
 
-  attr_accessor :worker_key, :mq
+  attr_accessor :worker_key, :mq, :processing, :listen_queue
 
   def initialize(mq)
+    @processing = false
     @mq = mq
     @worker_key = UUIDTools::UUID.random_create.to_s
+    @listen_queue = mq.queue(@worker_key, :exclusive => true)
   end
 
   def publish(name, msg)
     mq.queue(name).publish(msg, :persistent => true)
+    #message = JSON.parse(msg)
+    #DaemonKit.logger.debug("#{worker_key} SENT: #{message['command']}")
   end
 
   def save_term(params)
@@ -32,9 +36,9 @@ class GminerProcessor
     publish("gminer-databaser", msg)
   end
 
-  def create_for(geo_accession, field_name, field_value, description, ncbo_id, current_ncbo_id, stopwords)
+  def create_for(geo_accession, field_name, field_value, description, ncbo_id, stopwords, email)
     cleaned = field_value.gsub(/[\r\n]+/, " ")
-    hash = NCBOService.result_hash(cleaned, stopwords, current_ncbo_id)
+    hash = NCBOService.result_hash(cleaned, stopwords, ncbo_id, email)
     process_ncbo_results(hash, geo_accession, field_name, description, ncbo_id)
   end
 
@@ -45,14 +49,10 @@ class GminerProcessor
   end
 
   def process_direct(hash, geo_accession, field_name, description, ncbo_id)
-    if hash.keys.any?
-      hash.keys.each do |key|
-        current_ncbo_id, term_id = key.split("|")
-        save_term('term_id' => "#{ncbo_id}|#{term_id}", 'ncbo_id' => ncbo_id, 'term_name' => hash[key][:name])
-        save_annotation('geo_accession' => geo_accession, 'field_name' => field_name, 'ncbo_id' => ncbo_id, 'ontology_term_id' => "#{ncbo_id}|#{term_id}", 'text_start' => hash[key][:from], 'text_end' => hash[key][:to], 'description' => description)
-      end
-    else
-      save_annotation('geo_accession' => geo_accession, 'field_name' => field_name, 'ncbo_id' => "none", 'ontology_term_id' => "none", 'text_start' => "0", 'text_end' => "0", 'description' => "")
+    hash.keys.each do |key|
+      current_ncbo_id, term_id = key.split("|")
+      save_term('term_id' => "#{ncbo_id}|#{term_id}", 'ncbo_id' => ncbo_id, 'term_name' => hash[key][:name])
+      save_annotation('geo_accession' => geo_accession, 'field_name' => field_name, 'ncbo_id' => ncbo_id, 'ontology_term_id' => "#{ncbo_id}|#{term_id}", 'text_start' => hash[key][:from], 'text_end' => hash[key][:to], 'description' => description)
     end
   end
 
@@ -68,28 +68,35 @@ class GminerProcessor
   end
 
   def shutdown
-    DaemonKit.logger.debug("Shutting down #{worker_key}")
+    #DaemonKit.logger.debug("Shutting down #{worker_key}")
     publish(GminerProcessor::SCHEDULER_QUEUE_NAME, {'worker_key' => worker_key, 'command' => 'shutdown'}.to_json)
-    exit
+    listen_queue.unsubscribe do
+      exit
+    end
   end
 
   def process_job(params)
-    # params = {'job_id' => job.id, 'geo_accession' => job.geo_accession, 'field' => job.field, 'value' => item.send(job.field), 'description' => item.descriptive_text, 'ncbo_id' => ncbo_id, 'current_ncbo_id' => current_ncbo_id, 'stopwords' => stopwords}
-    create_for(params['geo_accession'], params['field'], params['value'], params['description'], params['ncbo_id'], params['current_ncbo_id'], params['stopwords'])
-    DaemonKit.logger.debug("processing #{params['geo_accession']}:#{params['field']}")
+    # params = {'email' => email, 'job_id' => job.id, 'geo_accession' => job.geo_accession, 'field' => job.field, 'value' => item.send(job.field), 'description' => item.descriptive_text, 'ncbo_id' => ncbo_id, 'stopwords' => stopwords}
+    create_for(params['geo_accession'], params['field'], params['value'], params['description'], params['ncbo_id'], params['stopwords'], params['email'])
+    #DaemonKit.logger.debug("processing #{params['geo_accession']}:#{params['field']}")
     publish(GminerProcessor::SCHEDULER_QUEUE_NAME, {'worker_key' => worker_key, 'command' => 'finished', 'job_id' => params['job_id']}.to_json)
-
-    rescue NCBOException
-      DaemonKit.logger.debug("FAILURE!!!! worker:#{worker_key} job:#{params['job_id']}")
+    rescue NCBOException => ex
+      DaemonKit.logger.debug("FAILURE!!!! worker:#{worker_key} job:#{params['job_id']} geo:#{params['geo_accession']} field:#{params['field']} Exception:#{ex.inspect}")
       publish(GminerProcessor::SCHEDULER_QUEUE_NAME, {'worker_key' => worker_key, 'command' => 'failed', 'job_id' => params['job_id']}.to_json)
+    ensure
+      @processing = false
   end
 
   def process(msg)
     message = JSON.parse(msg)
+    #DaemonKit.logger.debug("#{worker_key} GOT: #{message['command']}")
     case message['command']
       when 'prepare'
         publish(GminerProcessor::SCHEDULER_QUEUE_NAME, {'worker_key' => worker_key, 'command' => 'ready'}.to_json)
+      when 'status'
+        publish(GminerProcessor::SCHEDULER_QUEUE_NAME, {'worker_key' => worker_key, 'command' => 'status', 'processing' => @processing}.to_json)
       when 'job'
+        @processing = true
         publish(GminerProcessor::SCHEDULER_QUEUE_NAME, {'worker_key' => worker_key, 'command' => 'working', 'job_id' => message['job_id']}.to_json)
         process_job(message)
       when 'shutdown'

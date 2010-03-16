@@ -3,7 +3,12 @@ require File.dirname(__FILE__) + '/../spec_helper'
 describe GminerProcessor do
 
   before(:each) do
+    @queue = mock("queue")
+    @lq = mock("listen_queue")
+    @queue.stub!(:bind).and_return(@lq)
     @mq = mock("message_queue")
+    @mq.stub!(:queue).and_return(@queue)
+    @mq.stub!(:topic).and_return("")
     @p = GminerProcessor.new(@mq)
     @p.stub!(:worker_key).and_return("1234")
   end
@@ -16,12 +21,20 @@ describe GminerProcessor do
       @p.process(@message)
     end
 
+    it "should send status" do
+      @message = {'command' => 'status'}
+      JSON.should_receive(:parse).with(@message).and_return(@message)
+      @p.should_receive(:publish).with("gminer-scheduler", "{\"command\":\"status\",\"processing\":false,\"worker_key\":\"1234\"}").and_return(true)
+      @p.process(@message)
+    end
+
     it "should send working" do
       @message = {'command' => 'job', 'job_id' => "1"}
       JSON.should_receive(:parse).with(@message).and_return(@message)
       @p.should_receive(:publish).with("gminer-scheduler", "{\"command\":\"working\",\"job_id\":\"1\",\"worker_key\":\"1234\"}").and_return(true)
       @p.should_receive(:process_job).with(@message)
       @p.process(@message)
+      @p.processing.should == true
     end
 
     it "should shutdown" do
@@ -34,17 +47,19 @@ describe GminerProcessor do
 
   describe "process job" do
     it "should call create for and send a finished message" do
-      @p.should_receive(:create_for).with("geo", "field", "value", "desc", "ncbo_id", "current_ncbo_id", "stopwords").and_return(true)
+      @p.should_receive(:create_for).with("geo", "field", "value", "desc", "ncbo_id", "stopwords", 'user@comp.com').and_return(true)
       @p.should_receive(:publish).with("gminer-scheduler", "{\"command\":\"finished\",\"job_id\":1,\"worker_key\":\"1234\"}").and_return(true)
-      hash = {'geo_accession' => "geo", 'field' => "field", 'value' => "value", 'description' => "desc", 'ncbo_id' => "ncbo_id", 'job_id' => 1, 'stopwords' => 'stopwords', 'current_ncbo_id' => 'current_ncbo_id'}
+      hash = {'email' => 'user@comp.com', 'geo_accession' => "geo", 'field' => "field", 'value' => "value", 'description' => "desc", 'ncbo_id' => "ncbo_id", 'job_id' => 1, 'stopwords' => 'stopwords'}
       @p.process_job(hash).should be_true
+      @p.processing.should == false
     end
 
     it "should publish a failure message on fail" do
-      @p.should_receive(:create_for).with("geo", "field", "value", "desc", "ncbo_id", "current_ncbo_id", "stopwords").and_raise(NCBOException.new("error", "params"))
+      @p.should_receive(:create_for).with("geo", "field", "value", "desc", "ncbo_id", "stopwords", 'user@comp.com').and_raise(NCBOException.new("error", "params"))
       @p.should_receive(:publish).with("gminer-scheduler", "{\"command\":\"failed\",\"job_id\":1,\"worker_key\":\"1234\"}").and_return(true)
-      hash = {'geo_accession' => "geo", 'field' => "field", 'value' => "value", 'description' => "desc", 'ncbo_id' => "ncbo_id", 'job_id' => 1, 'stopwords' => 'stopwords', 'current_ncbo_id' => 'current_ncbo_id'}
+      hash = {'email' => 'user@comp.com', 'geo_accession' => "geo", 'field' => "field", 'value' => "value", 'description' => "desc", 'ncbo_id' => "ncbo_id", 'job_id' => 1, 'stopwords' => 'stopwords'}
       @p.process_job(hash).should be_true
+      @p.processing.should == false
     end
   end
 
@@ -52,15 +67,16 @@ describe GminerProcessor do
     it "should send a message and quit" do
       @p.should_receive(:publish).with("gminer-scheduler", "{\"command\":\"shutdown\",\"worker_key\":\"1234\"}").and_return(true)
       @p.should_receive(:exit).and_return(true)
+      @lq.should_receive(:unsubscribe).and_yield()
       @p.shutdown.should be_true
     end
   end
 
   describe "create for" do
     it "should get the information from NCBO and process it" do
-      NCBOService.should_receive(:result_hash).with("field_value", "stopwords", "current_ncbo_id").and_return("hash")
+      NCBOService.should_receive(:result_hash).with("field_value", "stopwords", "ncbo_id", 'user@comp.com').and_return("hash")
       @p.should_receive(:process_ncbo_results).with("hash", "GSM1234", "field_name", "description", "ncbo_id").and_return(true)
-      @p.create_for("GSM1234", "field_name", "field_value", "description", "ncbo_id", "current_ncbo_id", "stopwords").should be_true
+      @p.create_for("GSM1234", "field_name", "field_value", "description", "ncbo_id", "stopwords", 'user@comp.com').should be_true
     end
   end
 
@@ -103,9 +119,8 @@ describe GminerProcessor do
       @p.process_direct(hash, "GSM1234", "fname", "desc", "ncbo_id")
     end
 
-    it "should create an empty annotation if we didn't get back any results" do
+    it "should do nothing if we didn't get back any results" do
       hash = {}
-      @p.should_receive(:save_annotation).with('geo_accession' => "GSM1234", 'field_name' => "fname", 'ncbo_id' => "none", 'ontology_term_id' => "none", 'text_start' => "0", 'text_end' => "0", 'description' => "")
       @p.process_direct(hash, "GSM1234", "fname", "desc", "ncbo_id")
     end
   end

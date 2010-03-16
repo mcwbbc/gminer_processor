@@ -26,7 +26,7 @@ describe NCBOService do
                            {"string"=>"T999"},
                           "localOntologyId"=>"39778"},
                           "context"=>
-                           {"mappingType"=>"Manual", "class"=>"mappingContextBean", "contextName"=>"MAPPING", "mappedConceptId"=>"39478/Adrenal_Medulla", "isDirect"=>"false"},
+                           {"mappingType"=>"Automatic", "class"=>"mappingContextBean", "contextName"=>"MAPPING", "mappedConceptId"=>"39478/Adrenal_Medulla", "isDirect"=>"false", 'from' => '10', 'to' => '30'},
                         "score"=>"14"}
                         ]
                       }}}}}
@@ -35,7 +35,7 @@ describe NCBOService do
                     "39234|RS:0000457"=>{:name=>"rat strain", :from => "1", :to => "10"}
                   },
                   "MAPPING"=>{
-                    "39778|MA:0000119"=>{:name=>"adrenal gland medulla", :from => "0", :to => "0"}
+                    "39778|MA:0000119"=>{:name=>"adrenal gland medulla", :from => "10", :to => "30"}
                   },
                   "ISA_CLOSURE"=>{}
                 }
@@ -49,41 +49,72 @@ describe NCBOService do
   end
 
   describe "result_hash" do
-    it "should return the generate hash results" do
-      hash = {'success' => {'data' => {"annotatorResultBean"=>{"text"=>"rat strain", "annotations"=> ["annotations"]}}}}
-      results = {"MGREP" => {}, "MAPPING"=>{}, "ISA_CLOSURE"=>{}}
-      NCBOService.should_receive(:get_data).with("word", "stopword", "id").and_return(hash)
-      NCBOService.should_receive(:generate_hash).with(["annotations"]).and_return(results)
-      NCBOService.result_hash("word", "stopword", "id").should == results
+    describe "failures" do
+      it "should raise an exception without result" do
+        NCBOService.should_receive(:get_data).with("word", "stopword", 'email', "id").and_return(nil)
+        lambda {NCBOService.result_hash("word", "stopword", "id", 'email')}.should raise_error(NCBOException)
+      end
+
+      it "should raise an exception without result" do
+        hash = {'errorStatus' => {'shortMessage' => 'short', 'longMessage' => 'long'}}
+        NCBOService.should_receive(:get_data).with("word", "stopword", 'email', "id").and_return(hash)
+        lambda {NCBOService.result_hash("word", "stopword", "id", 'email')}.should raise_error(NCBOException)
+      end
+
+      it "should raise an exception with success or errorStatus" do
+        hash = {'something' => {}}
+        NCBOService.should_receive(:get_data).with("word", "stopword", 'email', "id").and_return(hash)
+        lambda {NCBOService.result_hash("word", "stopword", "id", 'email')}.should raise_error(NCBOException)
+      end
+    end
+
+    describe "success" do
+      it "should return the generate hash results" do
+        hash = {'success' => {'data' => {"annotatorResultBean"=>{"text"=>"rat strain", "annotations"=> ["annotations"]}}}}
+        results = {"MGREP" => {}, "MAPPING"=>{}, "ISA_CLOSURE"=>{}}
+        NCBOService.should_receive(:get_data).with("word", "stopword", 'email', "id").and_return(hash)
+        NCBOService.should_receive(:generate_hash).with(["annotations"]).and_return(results)
+        NCBOService.result_hash("word", "stopword", "id", 'email').should == results
+      end
     end
   end
 
   describe "get data" do
-    it "should get the xml from ncbo, which is parsed into a hash by httparty" do
-      NCBOService.should_receive(:post).with("/obs/annotator", {:body=>{"levelMax"=>"10", "stopWords"=>"stopwords", "format"=>"xml", "longestOnly"=>"false", "textToAnnotate"=>"word", "wholeWordOnly"=>"true", "scored"=>"true"}}).and_return({:key => "value"})
-      NCBOService.get_data("word", "stopwords").should == {:key => "value"}
+    before(:each) do
+      @default_params = {'email' => 'user@comp.com',
+                         "longestOnly"=>"false",
+                         "wholeWordOnly"=>"true",
+                         "stopWords"=>"stopwords",
+                         "minTermSize"=>"2",
+                         "withSynonyms"=>"false",
+                         "scored"=>"true",
+                         "ontologiesToKeepInResult" => "1234",
+                         "isVirtualOntologyId"=>"true",
+                         "levelMax"=>"10",
+                         "textToAnnotate"=>"word",
+                         "format"=>"xml"} #,"ontologiesToExpand" => "1234"}
     end
 
     it "should get the xml from ncbo, which is parsed into a hash by httparty" do
-      NCBOService.should_receive(:post).with("/obs/annotator", {:body=>{"levelMax"=>"10", "stopWords"=>"stopwords", "format"=>"xml", "longestOnly"=>"false", "textToAnnotate"=>"word", "wholeWordOnly"=>"true", "scored"=>"true", "ontologiesToKeepInResult" => "1234"}}).and_return({:key => "value"})
-      NCBOService.get_data("word", "stopwords", "1234").should == {:key => "value"}
+      NCBOService.should_receive(:post).with("/obs/annotator", {:body=>@default_params}).and_return({:key => "value"})
+      NCBOService.get_data("word", "stopwords", 'user@comp.com', "1234").should == {:key => "value"}
     end
 
     it "should retry on Errno::ECONNRESET" do
-      query = {:body=>{"levelMax"=>"10", "stopWords"=>"stopwords", "format"=>"xml", "longestOnly"=>"false", "textToAnnotate"=>"word", "wholeWordOnly"=>"true", "scored"=>"true"}}
+      query = {:body=>@default_params}
       NCBOService.should_receive(:post).with("/obs/annotator", query).once.and_raise(Errno::ECONNRESET)
       NCBOService.should_receive(:post).with("/obs/annotator", query).and_return({:key => "value"})
-      NCBOService.get_data("word", "stopwords").should == {:key => "value"}
+      NCBOService.get_data("word", "stopwords", 'user@comp.com', "1234").should == {:key => "value"}
     end
 
     it "should fail with too many resets" do
-      NCBOService.should_receive(:post).with("/obs/annotator", {:body=>{"levelMax"=>"10", "stopWords"=>"stopwords", "format"=>"xml", "longestOnly"=>"false", "textToAnnotate"=>"word", "wholeWordOnly"=>"true", "scored"=>"true"}}).twice.and_raise(Errno::ECONNRESET)
-      lambda {NCBOService.get_data("word", "stopwords")}.should raise_error(NCBOException)
+      NCBOService.should_receive(:post).with("/obs/annotator", {:body=>@default_params}).twice.and_raise(Errno::ECONNRESET)
+      lambda {NCBOService.get_data("word", "stopwords", 'user@comp.com', "1234")}.should raise_error(NCBOException)
     end
 
     it "should raise an exception on failure" do
-      NCBOService.should_receive(:post).with("/obs/annotator", {:body=>{"levelMax"=>"10", "stopWords"=>"stopwords", "format"=>"xml", "longestOnly"=>"false", "textToAnnotate"=>"word", "wholeWordOnly"=>"true", "scored"=>"true"}}).twice.and_raise(Exception)
-      lambda {NCBOService.get_data("word", "stopwords")}.should raise_error(NCBOException)
+      NCBOService.should_receive(:post).with("/obs/annotator", {:body=>@default_params}).twice.and_raise(Exception)
+      lambda {NCBOService.get_data("word", "stopwords", 'user@comp.com', "1234")}.should raise_error(NCBOException)
     end
   end
 

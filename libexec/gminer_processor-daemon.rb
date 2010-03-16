@@ -9,6 +9,8 @@ DaemonKit::Application.running! do |config|
   #   # do something clever
   # end
   # config.trap( 'TERM', Proc.new { puts 'Going down' } )
+  config.trap( 'INT', Proc.new { @processor.listen_queue.unsubscribe } )
+  config.trap( 'TERM', Proc.new { @processor.listen_queue.unsubscribe } )
 end
 
 # IMPORTANT CONFIGURATION NOTE
@@ -31,11 +33,17 @@ DaemonKit::AMQP.run do
   end
 
   @amq = ::MQ.new
-
+  @amq.prefetch(1)
   @processor = GminerProcessor.new(@amq)
   @processor.publish(GminerProcessor::SCHEDULER_QUEUE_NAME, {'worker_key' => @processor.worker_key, 'command' => 'alive'}.to_json)
 
-  @amq.queue("worker-#{@processor.worker_key}", :durable => true, :auto_delete => true).subscribe do |msg|
+#  DaemonKit.logger.debug("LAUNCHED: #{@processor.worker_key}")
+
+
+
+  @processor.listen_queue.subscribe do |msg|
+#    DaemonKit.logger.debug("MSG: #{msg}")
     @processor.process(msg)
   end
+
 end
