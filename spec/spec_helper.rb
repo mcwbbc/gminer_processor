@@ -1,3 +1,5 @@
+DAEMON_ENV = 'test' unless defined?( DAEMON_ENV )
+
 begin
   require 'spec'
 rescue LoadError
