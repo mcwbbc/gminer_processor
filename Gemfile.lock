@@ -1,0 +1,35 @@
+GEM
+  remote: http://rubygems.org/
+  specs:
+    amqp (0.7.1)
+      eventmachine (>= 0.12.4)
+    crack (0.1.8)
+    daemon-kit (0.1.8.1)
+      eventmachine (>= 0.12.10)
+    diff-lcs (1.1.2)
+    eventmachine (0.12.10)
+    httparty (0.7.7)
+      crack (= 0.1.8)
+    json (1.5.1)
+    rake (0.8.7)
+    rspec (2.5.0)
+      rspec-core (~> 2.5.0)
+      rspec-expectations (~> 2.5.0)
+      rspec-mocks (~> 2.5.0)
+    rspec-core (2.5.1)
+    rspec-expectations (2.5.0)
+      diff-lcs (~> 1.1.2)
+    rspec-mocks (2.5.0)
+    uuidtools (2.1.2)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  amqp
+  daemon-kit
+  httparty
+  json
+  rake
+  rspec
+  uuidtools

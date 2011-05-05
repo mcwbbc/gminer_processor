@@ -1,4 +1,4 @@
-require File.join( File.dirname(__FILE__), '..', "spec_helper" )
+require 'spec_helper'
 
 describe NCBOService do
 
@@ -9,20 +9,20 @@ describe NCBOService do
     end
 
     it "should clean up the returned hash from ncbo if there is one annotation" do
-      hash = {'success' => 
-              {'data' => 
-                {"annotatorResultBean" => 
-                  {"text" => "rat strain", "annotations" => 
+      hash = {'success' =>
+              {'data' =>
+                {"annotatorResultBean" =>
+                  {"text" => "rat strain", "annotations" =>
                     {"annotationBean"=> [
-                      {"concept" => 
-                        {"preferredName"=>"rat strain", "localConceptId"=>"39234/RS:0000457", "synonyms"=>nil, "isTopLevel"=>"true", "localSemanticTypeIds" => 
+                      {"concept" =>
+                        {"preferredName"=>"rat strain", "localConceptId"=>"39234/RS:0000457", "synonyms"=>nil, "isTopLevel"=>"true", "localSemanticTypeIds" =>
                           {"string"=>"T999"},
                          "localOntologyId"=>"39234"},
                        "context" =>
                           {"termId"=>"6991983", "class"=>"obs.common.beans.MgrepContextBean", "termName"=>"rat strain", "from"=>"1", "contextName"=>"MGREP", "to"=>"10", "isDirect"=>"true"},
                        "score"=>"10.0"},
-                       {"concept" => 
-                         {"preferredName"=>"adrenal gland medulla", "localConceptId"=>"39778|MA:0000119", "synonyms"=>nil, "isTopLevel"=>"true", "localSemanticTypeIds" => 
+                       {"concept" =>
+                         {"preferredName"=>"adrenal gland medulla", "localConceptId"=>"39778|MA:0000119", "synonyms"=>nil, "isTopLevel"=>"true", "localSemanticTypeIds" =>
                            {"string"=>"T999"},
                           "localOntologyId"=>"39778"},
                           "context"=>
@@ -119,61 +119,6 @@ describe NCBOService do
   end
 
 end
-
-PROXY_ERROR = <<HTML
-<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
-<html><head>
-<title>502 Proxy Error</title>
-</head><body>
-<h1>Proxy Error</h1>
-<p>The proxy server received an invalid
-response from an upstream server.<br />
-The proxy server could not handle the request <em><a
-href="/obs/annotator">POST&nbsp;/obs/annotator</a></em>.<p>
-Reason: <strong>Error reading from remote
-server</strong></p></p>
-<hr>
-<address>Apache/2.2.3 (Red Hat) Server at rest.bioontology.org Port
-80</address>
-</body></html>
-HTML
-
-ONTOLOGY_ID_HASH = {"success"=>
-  {"data"=>
-    {"ontologyBean"=>
-      {"contactName"=>"Anatomy JAX",
-       "isFoundry"=>"1",
-       "hasViews"=>nil,
-       "format"=>"OBO",
-       "filenames"=>{"string"=>"adult_mouse_anatomy.obo"},
-       "dateReleased"=>"2009-04-12 02:32:33.0 PDT",
-       "viewOnOntologyVersionId"=>nil,
-       "versionStatus"=>"production",
-       "groupIds"=>{"int"=>"6001"},
-       "filePath"=>"/1000/9",
-       "codingScheme"=>
-        "http://www.bioontology.org/39778/Mouse adult gross anatomy|1000/9",
-       "categoryIds"=>{"int"=>["2812", "2811", "2810", "2817"]},
-       "id"=>"39778",
-       "versionNumber"=>"1.194",
-       "isRemote"=>"0",
-       "abbreviation"=>"MA",
-       "userId"=>"38116",
-       "statusId"=>"3",
-       "isView"=>"false",
-       "isManual"=>"0",
-       "homepage"=>"http://www.informatics.jax.org/searches/AMA_form.shtml",
-       "internalVersionNumber"=>"9",
-       "dateCreated"=>"2009-04-12 02:32:33.0 PDT",
-       "oboFoundryId"=>"adult_mouse_anatomy",
-       "description"=>
-        "A structured controlled vocabulary of the adult anatomy of the mouse (Mus).",
-       "contactEmail"=>"anatomy@informatics.jax.org",
-       "displayLabel"=>"Mouse adult gross anatomy",
-       "ontologyId"=>"1000",
-       "virtualViewIds"=>nil}},
-   "accessDate"=>"2009-10-02 12:49:41.718 PDT",
-   "accessedResource"=>"/bioportal/virtual/ontology/1000"}}
 
 BIGHASH = {'success' => {"data"=>
   {"annotatorResultBean"=>

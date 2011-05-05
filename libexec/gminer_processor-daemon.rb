@@ -35,11 +35,9 @@ DaemonKit::AMQP.run do
   @amq = ::MQ.new
   @amq.prefetch(1)
   @processor = GminerProcessor.new(@amq)
-  @processor.publish(GminerProcessor::SCHEDULER_QUEUE_NAME, {'worker_key' => @processor.worker_key, 'command' => 'alive'}.to_json)
+  @amq.queue(GminerProcessor::SCHEDULER_QUEUE_NAME, :durable => true).publish({'worker_key' => @processor.worker_key, 'command' => 'alive'}.to_json, :persistent => true)
 
 #  DaemonKit.logger.debug("LAUNCHED: #{@processor.worker_key}")
-
-
 
   @processor.listen_queue.subscribe do |msg|
 #    DaemonKit.logger.debug("MSG: #{msg}")

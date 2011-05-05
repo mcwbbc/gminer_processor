@@ -6,6 +6,7 @@ rescue LoadError
 end
 
 require 'ncbo_exception'
+require 'ncbo_annotator_service'
 require 'ncbo_service'
 
 begin

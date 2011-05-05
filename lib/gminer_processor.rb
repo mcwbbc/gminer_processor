@@ -4,20 +4,22 @@
 class GminerProcessor
 
   SCHEDULER_QUEUE_NAME = 'gminer-scheduler'
+  DATABASER_QUEUE_NAME = 'gminer-databaser'
 
-  attr_accessor :worker_key, :mq, :processing, :listen_queue
+  attr_accessor :worker_key, :mq, :processing, :listen_queue, :databaser_queue
 
   def initialize(mq)
     @processing = false
     @mq = mq
     @worker_key = UUIDTools::UUID.random_create.to_s
-    @listen_queue = mq.queue(@worker_key, :exclusive => true)
+    @databaser_queue = mq.queue(GminerProcessor::DATABASER_QUEUE_NAME, :durable => true)
+    @listen_queue = mq.queue(@worker_key, :auto_delete => true)
   end
 
   def publish(name, msg)
-    mq.queue(name).publish(msg, :persistent => true)
-    #message = JSON.parse(msg)
-    #DaemonKit.logger.debug("#{worker_key} SENT: #{message['command']}")
+    mq.queue(name, :durable => true).publish(msg, :persistent => true)
+#    message = JSON.parse(msg)
+#    DaemonKit.logger.debug("#{worker_key} SENT: #{message['command']}")
   end
 
   def save_term(params)
@@ -32,36 +34,47 @@ class GminerProcessor
     databaser_message({'command' => 'saveclosure'}.merge!(params).to_json)
   end
 
+
   def databaser_message(msg)
-    publish("gminer-databaser", msg)
+    databaser_queue.publish(msg)
   end
 
-  def create_for(geo_accession, field_name, field_value, description, ncbo_id, stopwords, email)
+  def create_for(geo_accession, field_name, field_value, description, ncbo_id, ontology_name, stopwords, expand_ontologies, email)
     cleaned = field_value.gsub(/[\r\n]+/, " ")
-    hash = NCBOService.result_hash(cleaned, stopwords, ncbo_id, email)
-    process_ncbo_results(hash, geo_accession, field_name, description, ncbo_id)
+    term_hash, ontology_hash = NCBOAnnotatorService.result_hash(cleaned, stopwords, expand_ontologies, ncbo_id, email)
+    process_ncbo_results(term_hash, ontology_hash, geo_accession, field_name, field_value, description)
   end
 
-  def process_ncbo_results(hash, geo_accession, field_name, description, ncbo_id)
-    process_direct(hash["MGREP"], geo_accession, field_name, description, ncbo_id)
-    process_direct(hash["MAPPING"], geo_accession, field_name, description, ncbo_id)
-    process_closure(hash["ISA_CLOSURE"], geo_accession, field_name, ncbo_id)
+  def process_ncbo_results(hash, ontology_hash, geo_accession, field_name, field_value, description)
+    process_direct(hash["MGREP"], ontology_hash, geo_accession, field_name, field_value, description)
+    process_direct(hash["MAPPING"], ontology_hash, geo_accession, field_name, field_value, description, true)
+    process_closure(hash["CLOSURE"], ontology_hash, geo_accession, field_name)
   end
 
-  def process_direct(hash, geo_accession, field_name, description, ncbo_id)
+  def process_direct(hash, ontology_hash, geo_accession, field_name, field_value, description, mapping=false)
     hash.keys.each do |key|
       current_ncbo_id, term_id = key.split("|")
-      save_term('term_id' => "#{ncbo_id}|#{term_id}", 'ncbo_id' => ncbo_id, 'term_name' => hash[key][:name])
-      save_annotation('geo_accession' => geo_accession, 'field_name' => field_name, 'ncbo_id' => ncbo_id, 'ontology_term_id' => "#{ncbo_id}|#{term_id}", 'text_start' => hash[key][:from], 'text_end' => hash[key][:to], 'description' => description)
+      save_term('term_id' => "#{ontology_hash[hash[key][:local_ontology_id]]}|#{term_id}", 'ncbo_id' => ontology_hash[hash[key][:local_ontology_id]].to_i, 'term_name' => hash[key][:name])
+      save_annotation({'ncbo_id' => ontology_hash[hash[key][:local_ontology_id]].to_i,
+                 'ontology_term_id' => "#{ontology_hash[hash[key][:local_ontology_id]]}|#{term_id}",
+                 'term_name' => hash[key][:name],
+                 'geo_accession' => geo_accession,
+                 'field_name' => field_name,
+                 'description' => description,
+                 'from' => hash[key][:from].to_i,
+                 'to' => hash[key][:to].to_i,
+                 'synonym' => hash[key][:synonym],
+                 'mapping' => mapping})
     end
   end
 
-  def process_closure(hash, geo_accession, field_name, ncbo_id)
+  def process_closure(hash, ontology_hash, geo_accession, field_name)
     hash.keys.each do |key|
       hash[key].each do |closure|
         current_ncbo_id, term_id = closure[:id].split("|")
         key_current_ncbo_id, key_term_id = key.split("|")
-        save_term('term_id' => "#{ncbo_id}|#{term_id}", 'ncbo_id' => ncbo_id, 'term_name' => closure[:name])
+        ncbo_id = ontology_hash[closure[:local_ontology_id]]
+        save_term('term_id' => "#{ncbo_id}|#{term_id}", 'ncbo_id' => ncbo_id.to_i, 'term_name' => closure[:name])
         save_closure('geo_accession' => geo_accession, 'field_name' => field_name, 'term_id' => "#{ncbo_id}|#{key_term_id}", 'closure_term' => "#{ncbo_id}|#{term_id}")
       end
     end
@@ -77,7 +90,7 @@ class GminerProcessor
 
   def process_job(params)
     # params = {'email' => email, 'job_id' => job.id, 'geo_accession' => job.geo_accession, 'field' => job.field, 'value' => item.send(job.field), 'description' => item.descriptive_text, 'ncbo_id' => ncbo_id, 'stopwords' => stopwords}
-    create_for(params['geo_accession'], params['field'], params['value'], params['description'], params['ncbo_id'], params['stopwords'], params['email'])
+    create_for(params['geo_accession'], params['field'], params['value'], params['description'], params['ncbo_id'], params['ontology_name'], params['stopwords'], params['expand_ontologies'], params['email'])
     #DaemonKit.logger.debug("processing #{params['geo_accession']}:#{params['field']}")
     publish(GminerProcessor::SCHEDULER_QUEUE_NAME, {'worker_key' => worker_key, 'command' => 'finished', 'job_id' => params['job_id']}.to_json)
     rescue NCBOException => ex

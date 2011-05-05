@@ -3,9 +3,13 @@
 
 DAEMON_ROOT = "#{File.expand_path(File.dirname(__FILE__))}/.." unless defined?( DAEMON_ROOT )
 
-# Use bundler if available
-if File.exists?( File.join( DAEMON_ROOT, 'vendor', 'gems', 'environment.rb' ) )
-  require File.join( DAEMON_ROOT, 'vendor', 'gems', 'environment' )
+# Use Bundler (preferred)
+begin
+  require File.expand_path('../../.bundle/environment', __FILE__)
+rescue LoadError
+  require 'rubygems'
+  require 'bundler'
+  Bundler.setup
 end
 
 module DaemonKit
@@ -25,7 +29,7 @@ module DaemonKit
     end
 
     def vendor_kit?
-      File.exists?( "#{DAEMON_ROOT}/vendor/daemon_kit" )
+      File.exists?( "#{DAEMON_ROOT}/vendor/daemon-kit" )
     end
   end
 
@@ -38,7 +42,7 @@ module DaemonKit
 
   class VendorBoot < Boot
     def load_initializer
-      require "#{DAEMON_ROOT}/vendor/daemon_kit/lib/daemon_kit/initializer"
+      require "#{DAEMON_ROOT}/vendor/daemon-kit/lib/daemon_kit/initializer"
     end
   end
 

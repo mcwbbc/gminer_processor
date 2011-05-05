@@ -1,11 +1,4 @@
-unless respond_to?(:namespace) # cap2 differentiator
-  $stderr.puts "Requires capistrano version 2"
-  exit 1
-end
+load 'deploy' if respond_to?(:namespace) # cap2 differentiator
+Dir['vendor/plugins/*/recipes/*.rb'].each { |plugin| load(plugin) }
 
-require 'config/boot'
-load DaemonKit.framework_root + '/lib/daemon_kit/deployment/capistrano.rb'
-
-Dir['vendor/*/recipes/*.rb'].each { |plugin| load(plugin) }
-Dir['config/deploy/recipes/*.rb'].each { |plugin| load(plugin) }
-load 'config/deploy.rb'
+load 'config/deploy' # remove this line to skip loading any of the default tasks

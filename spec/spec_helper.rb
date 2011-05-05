@@ -1,23 +1,16 @@
-DAEMON_ENV = 'test' unless defined?( DAEMON_ENV )
+# This file is copied to spec/ when you run 'rails generate rspec:install'
+ENV["DAEMON_ENV"] ||= 'test'
+require File.expand_path("../../config/environment", __FILE__)
 
-begin
-  require 'spec'
-rescue LoadError
-  require 'rubygems'
-  gem 'rspec'
-  require 'spec'
-end
-
-require File.dirname(__FILE__) + '/../config/environment'
 DaemonKit::Application.running!
-
-Spec::Runner.configure do |config|
+RSpec.configure do |config|
   # == Mock Framework
   #
-  # RSpec uses it's own mocking framework by default. If you prefer to
-  # use mocha, flexmock or RR, uncomment the appropriate line:
+  # If you prefer to use mocha, flexmock or RR, uncomment the appropriate line:
   #
   # config.mock_with :mocha
   # config.mock_with :flexmock
   # config.mock_with :rr
+  config.mock_with :rspec
+
 end
