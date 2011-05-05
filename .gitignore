@@ -4,3 +4,5 @@ tmp/*
 .DS\_Store
 .DS_Store
 /log/*.pid
+.bundle
+vendor/bundle
